@@ -1,0 +1,322 @@
+theory V2V
+
+begin
+
+builtins: hashing, symmetric-encryption, bilinear-pairing, signing, diffie-hellman, multiset
+
+functions: h1/1, h2/1, inv/1 , senc/2, sdec/2, pmult/2
+
+
+
+//Regisration of vehicles
+
+rule register_longterm_keys:
+let
+
+PKV_A=pmult(h(<~x_A,~delta,'Veh_Alice'>),'P')
+
+D=pmult(~delta,'P')
+s1=pmult(~t_dA,D)
+s2=inv(s1)
+s3=inv(PKV_A)
+Cert_A=pmult(s2,s3)
+
+PKV_B=pmult(h(<~x_B,~delta,'Veh_Bob'>),'P')
+
+s4=pmult(~t_dB,D)
+s5=inv(s4)
+s6=inv(PKV_B)
+Cert_B=pmult(s5,s6)
+
+in
+
+[ Fr(~delta),Fr(~epsilon),Fr(~t_dA),Fr(~t_dB), Fr(~x_A), Fr(~x_B), Fr(~Kc)]
+--[]->
+[!LVtAK($Veh_Alice,$KDC,~x_A,~t_dA),!LVtBK($Veh_Bob,$KDC,~x_B,~t_dB), !LTK($KDC,~delta,~epsilon),!LtkVS($Veh_Alice,$Veh_Bob,$KDC, ~Kc, Cert_A,Cert_B,PKV_A,PKV_B,D)]
+
+
+
+
+
+
+//Generation of groupkeys
+
+rule initial_groupkey:
+
+let
+GKpart2=h(<~lambda,~Vergk,Kc>)
+K=pmult(epsilon,'P')
+t=pmult(GKpart2,K)
+
+s=inv(t)
+GKpart1=pmult(s,'P')
+
+in
+[Fr(~lambda),Fr(~Vergk),!LTK(KDC,delta,epsilon),!LtkVS(Veh_Alice,Veh_Bob,KDC, Kc, Cert_A,Cert_B,PKV_A,PKV_B,D)]
+--[]->
+[!EK(KDC,~lambda,~Vergk),!GK(KDC,Veh_Alice,Veh_Bob,GKpart2,GKpart1,~Vergk,~lambda)]
+
+
+rule new_groupkey:
+
+let
+NGKpart2=h(~Nlambda,~NVergk,Kc)
+K=pmult(epsilon,'P')
+Nt=pmult(NGKpart2,K)
+sN=inv(<Nt>)
+NGKpart1=pmult(sN,'P')
+
+in
+[Fr(~Nlambda),Fr(~NVergk),!LTK(KDC,delta,epsilon),!LtkVS(Veh_Alice,Veh_Bob,KDC,Kc, Cert_A,Cert_B,PKV_A,PKV_B,D)]
+--[]->
+[!EKN(KDC,~Nlambda,~NVergk),!NGK(KDC,Veh_Bob,NGKpart2,NGKpart1,~NVergk,~Nlambda)]
+
+
+//Vehicle, RSUs and KDC are initialised by binding with long-term keys
+
+rule initialise_vehicle_Alice:
+
+[Fr(~id),!GK(KDC,Veh_Alice,Veh_Bob,GKpart2,GKpart1,Vergk,lambda),!VtAK(Veh_Alice,KDC,x_A,t_dA),!LtkVS(Veh_Alice,Veh_Bob,KDC, Kc, Cert_A,Cert_B,PKV_A,PKV_B,D)]
+
+--[Create(Veh_Alice, ~id), 
+Role('Veh_Alice') ]->
+
+[St_Veh_Alice_1(Veh_Alice, ~id,GKpart2,GKpart1,Vergk,lambda,x_A,t_dA,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,KDC,Veh_Bob)]
+
+
+rule initialise_vehicle_Bob:
+
+[Fr(~id),!GK(KDC,Veh_Alice,Veh_Bob,GKpart2,GKpart1,Vergk,lambda),!VtBK(Veh_Bob,KDC,x_B,t_dB),!LtkVS(Veh_Alice,Veh_Bob,KDC, Kc, Cert_A,Cert_B,PKV_A,PKV_B,D),!NGK(KDC,Veh_Bob,NGKpart2,NGKpart1,NVergk,Nlambda)]
+
+--[Create(Veh_Bob, ~id), 
+Role('Veh_Bob') ]->
+
+[St_Veh_Bob_1(Veh_Bob, ~id,GKpart2,GKpart1,Vergk,lambda,NGKpart2,NGKpart1,NVergk,Nlambda,x_B,t_dB,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,KDC,Veh_Alice)]
+
+
+
+
+
+
+
+
+//vehicle-Alice sends first message
+
+rule send_1:
+let
+
+
+
+a_PKV_Alice=pmult(~a,PKV_A)
+Sigma1=h(<a_PKV_Alice,Cert_A,PKV_A,t_dA,GKpart2,GKpart1,Vergk,~Tc>)
+in
+
+[Fr(~a),Fr(~Tc),!GK(KDC,Veh_Alice,Veh_Bob,GKpart2,GKpart1,Vergk,lambda),
+St_Veh_Alice_1(Veh_Alice, ~id,GKpart2,GKpart1,Vergk,lambda,x_A,t_dA,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,KDC,Veh_Bob)
+]
+--[Send(<Veh_Alice,<Vergk,a_PKV_Alice,t_dA,Cert_A,Sigma1,~Tc>>),
+ Honest(Veh_Alice), Honest(Veh_Bob), Honest(KDC), 
+Role('Veh_Alice'),Running_strongA(t_dA),Unique(PKV_A)]->
+[St_Veh_Alice_2(Veh_Alice, ~id,GKpart2,GKpart1,Vergk,lambda,x_A,t_dA,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,Sigma1,~Tc,a_PKV_Alice,KDC,Veh_Bob), Out(<Vergk,a_PKV_Alice,t_dA,Cert_A,Sigma1,~Tc>)]
+
+rule Recv_1:
+let
+
+
+PKV_A=pmult(h(<x_A,delta,'Veh_Alice'>),'P')
+
+
+D=pmult(delta,'P')
+s1=pmult(t_dA,D)
+s2=inv(s1)
+s3=inv(PKV_A)
+//Cert_A=pmult(<inv(pmult(t_dA,D))>,inv(PKV_A))
+a_PKV_Alice=pmult(a,PKV_A)
+Sigma1=h(<a_PKV_Alice,Cert_A,PKV_A,t_dA,GKpart2,GKpart1,Vergk>)
+
+
+in
+[In(<Vergk,a_PKV_Alice,t_dA,Cert_A,Sigma1,Tc>),!GK(KDC,Veh_Alice,Veh_Bob,GKpart2,GKpart1,Vergk,lambda),
+St_Veh_Bob_1(Veh_Bob, ~id,GKpart2,GKpart1,Vergk,lambda,NGKpart2,NGKpart1,NVergk,Nlambda,x_B,t_dB,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,KDC,Veh_Alice)]
+--[Receive(<Veh_Bob,<Vergk,a_PKV_Alice,t_dA,Cert_A,Sigma1,Tc>>),
+ Honest(Veh_Alice), Honest(Veh_Bob), Honest(KDC), 
+Role('Veh_Bob'),Commit_strongB(t_dA)]->
+[St_Veh_Bob_2(Veh_Bob, ~id,GKpart2,GKpart1,Vergk,lambda,NGKpart2,NGKpart1,NVergk,Nlambda,x_B,t_dB,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,a_PKV_Alice,t_dA,Sigma1,Tc,KDC,Veh_Alice)]
+
+
+rule send_2:
+let
+Sigma1=h(<a_PKV_Alice,Cert_A,PKV_A,t_dA,GKpart2,GKpart1,Vergk>)
+SK=pmult(a_PKV_Alice,PKV_B)
+
+
+Cypher=senc(<NGKpart2,NGKpart1,Nlambda,NVergk>,SK)
+Sigma2=h(<Cypher,Cert_B,PKV_B,Sigma1,t_dB,GKpart2,GKpart1,Vergk,~Tc2>)
+in
+
+[Fr(~Tc2),!NGK(KDC,Veh_Bob,NGKpart2,NGKpart1,NVergk,Nlambda),St_Veh_Bob_2(Veh_Bob, ~id,GKpart2,GKpart1,Vergk,lambda,NGKpart2,NGKpart1,NVergk,Nlambda,x_B,t_dB,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,a_PKV_Alice,t_dA,Sigma1,Tc,KDC,Veh_Alice)]
+--[Send(<Veh_Bob,<Cypher,t_dB,Cert_B,PKV_B, Sigma2,~Tc2>>),
+ Honest(Veh_Alice), Honest(Veh_Bob), Honest(KDC), 
+Role('Veh_Bob'),Running_strongB(t_dB),Unique(PKV_B)]->
+[St_Veh_Bob_3(Veh_Bob, ~id,GKpart2,GKpart1,Vergk,lambda,NGKpart2,NGKpart1,NVergk,Nlambda,x_B,t_dB,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,a_PKV_Alice,t_dA,Sigma1,Tc,SK,Cypher,Sigma2,~Tc2,KDC,Veh_Alice),
+Out(<Cypher,t_dB,Cert_B,PKV_B, Sigma2,~Tc2>)]
+
+
+rule Recv_2:
+
+let
+SK=pmult(a_PKV_Alice,PKV_B)
+Cypher=senc(<NGKpart2,NGKpart1,lambda,NVergk>,SK)
+Sigma2=h(<Cypher,Cert_B,PKV_B,Sigma_1,t_dB,GKpart2,GKpart1,Vergk,Tc2>)
+GKstar=sdec(Cypher,SK)
+in
+
+
+[In(<Cypher,t_dB,Cert_B,a_PKV_B, Sigma2,Tc2>),
+St_Veh_Alice_2(Veh_Alice, ~id,GKpart2,GKpart1,Vergk,lambda,x_A,t_dA,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,Sigma1,Tc,a_PKV_Alice,KDC,Veh_Bob)]
+
+--[Receive(<Veh_Bob,<Cypher,t_dB,Cert_B,PKV_B, Sigma2,Tc2>>),
+ Honest(Veh_Alice), Honest(Veh_Bob), Honest(KDC), 
+Role('Veh_Bob')]->
+[St_Veh_Alice_3(Veh_Alice, ~id,GKpart2,GKpart1,Vergk,lambda,x_A,t_dA,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,Sigma1,Tc,a_PKV_Alice,GKstar,SK,Sigma2,Tc2,KDC,Veh_Bob)]
+
+
+rule send_3:
+let
+Sigma3=h(<GKstar,Sigma2,~Tc3>)
+in
+[Fr(~Tc3),St_Veh_Alice_3(Veh_Alice, ~id,GKpart2,GKpart1,Vergk,lambda,x_A,t_dA,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,Sigma1,Tc,a_PKV_Alice,GKstar,SK,Sigma2,Tc2,KDC,Veh_Bob)]
+
+--[Send(<Veh_Alice,<Sigma3,~Tc3>>),
+ Honest(Veh_Alice), Honest(Veh_Bob), Honest(KDC), 
+Role('Veh_Alice'),Commit_strongA(t_dA),Secret(<Veh_Alice, GKstar,SK>)]->
+
+[St_Veh_Alice_4(Veh_Alice, ~id,GKpart2,GKpart1,Vergk,lambda,x_A,t_dA,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,Sigma1,Tc,a_PKV_Alice,GKstar,SK,Sigma2,Tc2,Sigma3,~Tc3,KDC,Veh_Bob), Out(<Sigma3,~Tc3>)]
+
+
+rule Recv_3:
+let
+Sigma3=h(<GKstar,Sigma2,Tc3>)
+in
+[In(<Sigma3,Tc3>),St_Veh_Bob_3(Veh_Bob, ~id,GKpart2,GKpart1,Vergk,lambda,NGKpart2,NGKpart1,NVergk,Nlambda,x_B,t_dB,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,a_PKV_Alice,t_dA,Sigma1,Tc,SK,Cypher,Sigma2,~Tc2,KDC,Veh_Alice)]
+
+--[Receive(<Veh_Bob,<Sigma3,Tc3>>),
+ Honest(Veh_Alice), Honest(Veh_Bob), Honest(KDC), 
+Role('Veh_Bob'),Commit_strongB(t_dB),Secret(<Veh_Bob, NGKpart2,NGKpart1,SK>) ]->
+
+[St_Veh_Bob_4(Veh_Bob, ~id,GKpart2,GKpart1,Vergk,lambda,NGKpart2,NGKpart1,NVergk,Nlambda,x_B,t_dB,Kc,Cert_A,Cert_B,PKV_A,PKV_B,D,a_PKV_Alice,t_dA,Sigma1,Tc,SK,Cypher,Sigma2,~Tc2,Sigma3,Tc3,KDC,Veh_Alice)]
+
+
+
+rule KKS:
+
+let
+AGKpart2=h(~Alambda,~AVergk,Kc)
+
+K=pmult(epsilon,'P')
+
+At=pmult(AGKpart2,K)
+sA=inv(<At>)
+AGKpart1=pmult(sA,'P')
+
+in
+[Fr(~Alambda),Fr(~a),Fr(~AVergk),!LTK(KDC,delta,epsilon),!LtkVS(Veh_Alice,Veh_Bob,KDC,Kc, Cert_A,Cert_B,PKV_A,PKV_B,D)]
+--[SesRev(Veh_Alice),SesRev(Veh_Bob)]->
+[!EKA(KDC,~Alambda,~AVergk),!AGK(KDC,Veh_Alice,Veh_Bob,AGKpart2,AGKpart1,~AVergk), Out(<~Alambda,~AVergk,AGKpart2,AGKpart1,~a>)]
+
+//restriction Equality:
+//"All x y #i. Cert_Verify_Bob(x,y) @#i ==> x = y" 
+
+
+
+
+//
+//	SECURITY PROPERTIES
+
+
+
+lemma executable:
+all-traces
+"All Veh_Alice m #i. Send(<Veh_Alice,<m>>)@i ==> Ex Veh_Bob m #k.  Receive(<Veh_Bob,<m>>) @k "
+
+
+
+lemma Injectiveagreement_Vehicle_Alice:
+    " (All t_dA #i .
+        Commit_strongA(t_dA )@ #i
+        ==>
+        (Ex #j . Running_strongA(t_dA ) @ #j & #j < #i) &
+        (not (Ex #j . Commit_strongA(t_dA ) @ #j & not (#i = #j)))
+    )"
+
+
+
+lemma Injectiveagreement_Vehicle_Bob:
+   " (All t_dB  #i .
+       Commit_strongB(t_dB )@ #i
+       ==>
+        (Ex #j . Running_strongB(t_dB ) @ #j & #j < #i) &
+        (not (Ex #j . Commit_strongB(t_dB ) @ #j & not (#i = #j))))"
+
+
+
+lemma Alice_vehicle_secrecy:
+all-traces
+
+  " 
+All Veh_Alice GKstar SK  #i.
+       Secret(<Veh_Alice, GKstar,SK>) @ i  ==> not(  Ex GKstar SK #r.K(<GKstar,SK>)@r)"
+
+
+lemma Bob_vehicle_secrecy:
+all-traces
+
+ "All Veh_Bob NGKpart2 NGKpart1 SK  #i.
+      Secret(<Veh_Bob, NGKpart2,NGKpart1,SK>) @ i  ==> not( 
+        
+      Ex NGKpart2 NGKpart1  SK #r.K(<NGKpart2,NGKpart1,SK>)@r)"
+
+
+lemma KKS:
+all-traces
+
+  " 
+All Veh_Alice Veh_Bob  NGKpart2 NGKpart1 SK #i #m #n.
+        Secret(<Veh_Alice, NGKpart2,NGKpart1,SK>) @ i & SesRev(Veh_Alice) @ m & SesRev(Veh_Bob) @ n==> not( 
+      
+       Ex NGKpart2 NGKpart1 #r.K(<NGKpart2,NGKpart1,SK>)@r )"
+
+
+
+
+lemma PFS:
+all-traces
+"All Veh_Alice Veh_Bob NGKpart2 NGKpart1 SK Kc x_A x_B #i #m #n. Secret(<Veh_Alice, NGKpart2,NGKpart1,SK>) @ i & Secret(<Veh_Bob, NGKpart2,NGKpart1,SK>) @ n & KU(<Kc,x_A, x_B>)@ m ==> not( 
+      
+       Ex NGKpart2 NGKpart1 #r.K(<NGKpart2,NGKpart1>)@r )"
+
+
+
+
+lemma Anonymity:
+exists-trace
+"
+not(Ex Veh_Alice Veh_Bob PKV_A PKV_B Cert_A Cert_B #m. K(<<Veh_Alice,PKV_A,Cert_A>,<Veh_Bob,PKV_B,Cert_B>>) @ m)
+"
+
+lemma Unlinkability_Alice:
+all-traces
+"
+All  #i #m PKV_A lambda. Unique(PKV_A) @ i & Unique(PKV_A) @ m & K(<lambda>) @ i & K(<lambda>) @ m==> #i=#m
+
+"
+
+lemma Unlinkability_Bob:
+all-traces
+"
+All  #i #m PKV_B lambda. Unique(PKV_B) @ i & Unique(PKV_B) @ m & K(<lambda>) @ i & K(<lambda>) @ m==> #i=#m
+"
+
+
+
+end
