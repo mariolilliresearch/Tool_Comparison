@@ -1,0 +1,70 @@
+free att:channel.
+fun aenc(bitstring,bitstring):bitstring.
+fun pk(bitstring):bitstring.
+fun senc(bitstring,bitstring):bitstring.
+fun sign(bitstring,bitstring):bitstring.
+event CERT_NONCESIGN_IN(bitstring,bitstring).
+event CERT_NONCESIGN_OUT(bitstring).
+event HonestA(bitstring).
+event HonestB(bitstring).
+event KEYSYM_ENC_IN(bitstring,bitstring).
+event KEYSYM_ENC_OUT(bitstring).
+event NONCE_IN(bitstring,bitstring).
+event NONCE_OUT(bitstring).
+event SessionA(bitstring,bitstring,bitstring,bitstring).
+event SessionB(bitstring,bitstring,bitstring,bitstring).
+reduc forall x_1:bitstring, x_2:bitstring;   adec(aenc(x_1, pk(x_2)), x_2) = x_1.
+reduc forall x_1:bitstring, x_2:bitstring;   fst((x_1, x_2)) = x_1.
+reduc forall x_1:bitstring, x_2:bitstring;   sdec(senc(x_1, x_2), x_2) = x_1.
+reduc forall x_1:bitstring, x_2:bitstring;   snd((x_1, x_2)) = x_2.
+reduc forall x_1:bitstring, x_2:bitstring;   verify(sign(x_1, x_2), x_1, pk(x_2)) = >
+
+(*sanity1*)
+query ni:bitstring, sk:bitstring, pka:bitstring, pkb:bitstring, t1:time,
+      t2:time;
+ (event(SessionA( ni, sk, pka, pkb ))@t1) &&
+ (event(SessionB( ni, sk, pka, pkb ))@t2)
+.
+(*secret*)
+query ni:bitstring, sk:bitstring, pk1:bitstring, pk2:bitstring, t1:time,
+      t2:time, t3:time, t4:time;
+ (((event(SessionB( ni, sk, pk1, pk2 ))@t4) && (attacker( sk )@t3)) &&
+  (event(HonestA( pk1 ))@t2)) &&
+ (event(HonestB( pk2 ))@t1)
+.
+
+process
+    !
+    (((new skA_1:bitstring;
+       event HonestA( pk(skA_1) );
+       out(att,pk(skA_1));
+       !
+       (in(att,pkB_1:bitstring);
+        new skAB_1:bitstring;
+        event KEYSYM_ENC_OUT( aenc(skAB_1, pkB_1) );
+        out(att,aenc(skAB_1, pkB_1));
+        in(att,cypher_1:bitstring);
+        let mess_1:bitstring=sdec(cypher_1, skAB_1) in
+        let xNb_1:bitstring=mess_1 in
+        event NONCE_IN( xNb_1, senc(xNb_1, skAB_1) );
+        let sig_1:bitstring=sign(xNb_1, skA_1) in
+        event CERT_NONCESIGN_OUT( senc((pk(skA_1), sig_1), skAB_1) );
+        out(att,senc((pk(skA_1), sig_1), skAB_1));
+        event SessionA( xNb_1, skAB_1, pk(skA_1), pkB_1 )))
+    | (!
+       (new skB_1:bitstring;
+       event HonestB( pk(skB_1) );
+        out(att,pk(skB_1));
+        in(att,cypher1_1:bitstring);
+        let mess1_1:bitstring=adec(cypher1_1, skB_1) in
+        let xskAB_1:bitstring=mess1_1 in
+        event KEYSYM_ENC_IN( xskAB_1, senc(xskAB_1, pk(skB_1)) );
+        new Nb_1:bitstring;
+        event NONCE_OUT( senc(Nb_1, xskAB_1) );
+        out(att,senc(Nb_1, xskAB_1));
+        in(att,cypher2_1:bitstring);
+        let mess2_1:bitstring=sdec(cypher2_1, xskAB_1) in
+        let (pkA_1:bitstring, xsig_1:bitstring)=mess2_1 in
+        event CERT_NONCESIGN_IN( xsig_1, senc((pkA_1, xsig_1), xskAB_1) );
+        let (=verify(xsig_1, Nb_1, pkA_1))=true in
+            (event SessionB( Nb_1, xskAB_1, pkA_1, pk(skB_1) ))))))
