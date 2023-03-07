@@ -13,42 +13,41 @@ begin
 builtins:  signing, symmetric-encryption, asymmetric-encryption
 
 let P()=        
-  new skA;
-  event HonestA(pk(skA));
-  out(pk(skA));
-  !( in(pkB);
-    new skAB;
-    event KEYSYM_ENC_OUT(aenc(skAB,pkB));
-    out(aenc( skAB ,pkB));
-    in(cypher);
-    let mess = sdec(cypher,skAB) in
-      let xNb = mess in
-        event NONCE_IN(xNb,senc(xNb,skAB));
-        let sig=sign(xNb,skA)in
-          event CERT_NONCESIGN_OUT(senc(<pk(skA),sig>,skAB));
-            out(senc(<pk(skA),sig>,skAB));
-            event SessionA(xNb,skAB,pk(skA),pkB)
-  )// strange use of the parenthesis also present in the example
-   // NSL ... is it correct?
+	new skA;
+	event HonestA(pk(skA));
+	out(pk(skA));
+	in(pkB);
+	new skAB;
+	event KEYSYM_ENC_OUT(aenc(skAB,pkB));
+	out(aenc( skAB ,pkB));
+	in(cypher);
+	let mess = sdec(cypher,skAB) in
+		let xNb = mess in
+		event NONCE_IN(xNb,senc(xNb,skAB));
+			let sig=sign(xNb,skA)in
+			  event CERT_NONCESIGN_OUT(senc(<pk(skA),sig>,skAB));
+				out(senc(<pk(skA),sig>,skAB));
+				event SessionA(xNb,skAB,pk(skA),pkB)
+
 
 let Q() =
-     new skB; 
-      event HonestB(pk(skB));
-      out(pk(skB));
-      in(cypher1);
-	    let mess1 = adec(cypher1,skB) in
-        let xskAB = mess1 in
-        event KEYSYM_ENC_IN(xskAB,senc(xskAB,pk(skB)));
-	      new Nb;
-        event NONCE_OUT(senc(Nb,xskAB));
-        out(senc(Nb,xskAB));
-	      in(cypher2);
-	      let mess2 = sdec(cypher2,xskAB) in
-	        let <pkA,xsig> = mess2 in
-          event CERT_NONCESIGN_IN(xsig,senc(<pkA,xsig>,xskAB));
-          if verify(xsig,Nb,pkA)=true then (
-            event SessionB(Nb,xskAB,pkA,pk(skB))
-          )
+new skB; 
+event HonestB(pk(skB));
+out(pk(skB));
+in(cypher1);
+let mess1 = adec(cypher1,skB) in
+	let xskAB = mess1 in
+		event KEYSYM_ENC_IN(xskAB,senc(xskAB,pk(skB)));
+		new Nb;
+		event NONCE_OUT(senc(Nb,xskAB));
+		out(senc(Nb,xskAB));
+		in(cypher2);
+		let mess2 = sdec(cypher2,xskAB) in
+			let <pkA,xsig> = mess2 in
+			event CERT_NONCESIGN_IN(xsig,senc(<pkA,xsig>,xskAB));
+			if verify(xsig,Nb,pkA)=true then (
+				event SessionB(Nb,xskAB,pkA,pk(skB))
+			)
 
 
 process:
