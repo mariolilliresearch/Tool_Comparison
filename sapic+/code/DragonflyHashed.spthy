@@ -1,0 +1,110 @@
+theory DragonflyHashed
+
+begin
+
+builtins: asymmetric-encryption, hashing
+functions: wifiPass/0 [private]
+
+let P()=        
+  new skA;
+  event HonestA(pk(skA));
+  new k;
+  event GENERATE_K(k);
+  let hash1 = h(pk(skA),wifiPass,k) in
+  	let mess1=<pk(skA),k,hash1> in
+		event COMMIT_1_OUT(mess1);
+		out(mess1);
+  		in(commit2);
+		event COMMIT_2_IN(commit2);
+		let <pkB,xr,xhash2>=commit2 in
+		if xhash2=h(<pk(skA),pkB,wifiPass,xr>) then( 
+			let hashskAB_A=h(<pk(skA),pkB,wifiPass,k,xr>) in
+				let skAB_A=h(<pk(skA),pkB,wifiPass,k,xr,hashskAB_A>) in
+					event CONFIRMATION_1_OUT(h(skAB_A));
+					out(h(skAB_A));
+					in(confirmation2);
+					event CONFIRMATION_2_IN(confirmation2);
+					let hashskAB_A=h(skAB_A) in
+						if confirmation2=hashskAB_A then event SessionA(skAB_A,pk(skA),pkB)
+		)				
+		
+  		
+  
+  
+let Q() =
+     new skB; 
+      event HonestB(pk(skB));
+	  in(commit1);
+	  event COMMIT_1_IN(commit1);
+	  let <pkA,xk,xhash1>=commit1 in
+	  	if(xhash1=h(<pkA,wifiPass,xk>))then(
+		  new r;
+		  event GENERATE_R(r);
+		  let hash2 = h(pkA,pk(skB),wifiPass,r) in
+		  	let mess2=<pk(skB),r,hash2> in
+				event COMMIT_2_OUT(mess2);
+				out(mess2);
+				in(confirmation1);
+				event CONFIRMATION_1_IN(confirmation1);
+				let hashskAB_B=h(<pkA,pk(skB),wifiPass,xk,r>) in
+					let skAB_B=h(<pkA,pk(skB),wifiPass,xk,r,hashskAB_B>) in
+					event CONFIRMATION_2_OUT(h(skAB_B));
+					out(h(skAB_B));
+					if(confirmation1=h(skAB_B))then(
+						event SessionB(skAB_B,pkA,pk(skB))
+					)
+					
+					
+	  	)
+	  
+process:
+(
+!(P())
+||
+!(Q())
+)
+
+
+
+lemma sanity1:  
+  exists-trace
+  "Ex sk pka pkb #t1 #t2 #t3 #t4. 
+  (HonestB(pkb) @t1
+  & HonestA(pka) @t2
+  & SessionA(sk,pka,pkb)@t3 
+  & SessionB(sk,pka,pkb)@t4)"
+  
+  
+lemma secret :
+"not( Ex pk1 pk2 sk #t1 #t2 #t3 #t4. 
+  (SessionB(sk,pk1,pk2) @ t4 
+	& KU(sk) @ t3
+	& HonestA(pk1) @ t2
+	& HonestB(pk2) @ t1 ))"
+
+lemma integrity:
+"(All sk sk1 pk1 pk2 #t4 #t2 #t3 #t5 #t6.
+ CONFIRMATION_1_IN(h(sk)) @ t4
+ & HonestA(pk1) @ t2
+ & HonestB(pk2) @ t3 
+ & SessionA(sk1,pk1,pk2) @ t5
+ & SessionB(sk,pk1,pk2) @ t6
+ & not(sk=sk1) ==>
+ not(Ex #t1 . CONFIRMATION_1_OUT(h(sk1))  @ t1 & t1<t4
+ ))"
+
+lemma authenticity_non_injective_A:
+"All sk1 pk1 pk2 #t1 #t2 #t4. 
+  (SessionA(sk1,pk1,pk2) @ t4 
+	& HonestA(pk1) @ t2
+	& HonestB(pk2) @ t1) ==>
+	 not(Ex #t3. KU(sk1) @ t3)
+	 " 
+lemma authenticity_non_injective_B:
+"All sk1 pk1 pk2 #t1 #t2 #t4. 
+  (SessionB(sk1,pk1,pk2) @ t4 
+	& HonestA(pk1) @ t2
+	& HonestB(pk2) @ t1) ==>
+	 not(Ex #t3. KU(sk1) @ t3)
+	 "   
+end  
