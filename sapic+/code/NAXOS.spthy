@@ -1,0 +1,62 @@
+theory NAXOS
+
+begin
+
+builtins: asymmetric-encryption, hashing, diffie-hellman
+
+let P()=        
+  new skA;
+  event HonestA(pk(skA));
+  out(pk(skA));
+  in(pkB);
+  new eskA;
+  event GENERATE_EPHERMERAL_I(eskA);
+  let hashA = h(eskA,skA) in
+  	let mess1=<exp('g',hashA),pk(skA)> in
+		event MESS1_OUT(mess1);
+		out(mess1);
+  		in(y);
+		event SessionA(exp(y,skA),exp(pkB,hashA),exp(y,hashA),pk(skA),pkB)
+		
+  		
+  
+  
+let Q() =
+	in(pkA);
+	event HonestPubKeyA(pkA);
+	new skB; 
+	event HonestB(pk(skB));
+	out(pk(skB));
+	in(x_pka);
+	let <x,pkA>=x_pka in
+		event MESS1_IN(x);
+		new eskB;
+		event GENERATE_EPHERMERAL_B(eskB);
+		let hashB = h(eskB,skB) in
+			let mess2=exp('g',hashB) in
+				event MESS2_OUT(mess2);
+				out(mess2);
+				event SessionB(exp(pkA,hashB),exp(x,skB),exp(x,hashB),pkA,pk(skB))
+	
+	  
+	  
+	  
+process:
+(
+!(P())
+|
+!(Q())
+)
+
+
+
+lemma sanity1:  
+  exists-trace
+  "Ex el1 el2 el3 pka pkb #t1 #t2 #t3 #t4. 
+  (HonestB(pkb) @t1
+  & HonestA(pka) @t2
+  & SessionA(el1,el2,el3,pka,pkb)@t3 
+  & SessionB(el1,el2,el3,pka,pkb)@t4)"
+  
+  
+end
