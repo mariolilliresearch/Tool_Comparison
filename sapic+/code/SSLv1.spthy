@@ -1,0 +1,172 @@
+/*
+*Protocol:    SSL Netscape implementation
+*            
+* A->B: {KAB}KB
+* B->A: {NB}KAB
+* A->B: {CA,{NB}sigKA}KAB
+*/
+
+theory SSL
+begin
+
+
+builtins:  signing, symmetric-encryption, asymmetric-encryption
+
+functions: macKey/0 [private],first/1,fakemacKey/0
+equations:first(<x,y>)=x
+
+let P()=        
+  new skA;
+  event HonestA(pk(skA));
+  out(<pk(skA),senc(<pk(skA),skA>,macKey)>);
+  	in(mess_pkB);
+	event ReceivedB(mess_pkB);
+	let <pkB,macpkB>=mess_pkB in
+		let realpkB=first(sdec(macpkB,macKey)) in
+			event AuthenticB(realpkB,pkB);
+			if(pkB=realpkB) then (
+			    new skAB;
+			    event KEYSYM_ENC_OUT(pk(skA),aenc(skAB,pkB));
+			    out(aenc( skAB ,pkB));
+			    in(cypher);
+			    let mess = sdec(cypher,skAB) in
+			      let xNb = mess in
+			        event NONCE_IN(pkB,senc(xNb,skAB));
+			        let sig=sign(xNb,skA)in
+						let messcert=senc(<pk(skA),sig>,skAB)in
+			          event CERT_NONCESIGN_OUT(pk(skA),messcert);
+			            out(messcert);
+			            event SessionA(xNb,skAB,pk(skA),pkB))
+			
+
+let Q() =
+	in(mess_pkA);
+	event ReceivedA(mess_pkA);
+	let <pkA,macpkA>=mess_pkA in
+		let realpkA=first(sdec(macpkA,macKey)) in
+			event AuthenticA(realpkA,pkA);
+			if(pkA=realpkA) then (
+			     new skB; 
+			      event HonestB(pk(skB));
+			      out(<pk(skB),senc(<pk(skB),skB>,macKey)>);
+			      in(cypher1);
+				    let mess1 = adec(cypher1,skB) in
+			        let xskAB = mess1 in
+			        event KEYSYM_ENC_IN(pkA,aenc(xskAB,pk(skB)));
+				      new Nb;
+			        event NONCE_OUT(pk(skB),senc(Nb,xskAB));
+			        out(senc(Nb,xskAB));
+				      in(cypher2);
+				      let mess2 = sdec(cypher2,xskAB) in
+						  let <pkA,xsig> = mess2 in
+					          if verify(xsig,Nb,pkA)=true then (
+							  	event CERT_NONCESIGN_IN(pkA,cypher2);
+					            event SessionB(Nb,xskAB,pkA,pk(skB))
+					          ))
+            
+let R()=
+	in(<pk,senc(<macpk,macsk>,macKey)>);
+	let <realpk,realsk>=sdec(senc(<macpk,macsk>,macKey),macKey) in
+			if(pk=realpk) then (
+				event Reveal(realpk,realsk);
+				out(<pk,realsk>)
+				
+				)
+
+
+
+
+
+process:
+(! (P)
+||
+! (R)
+||
+! (Q)
+)
+
+//the sanity check evaluates only the existence
+//of a path, but there is no guarantee that the one found is correct.
+
+/* 
+REMARK
+1. The trace is the one with the attacker
+2. The automatic translation in proverif produces a different queries
+ */
+
+lemma sanity1:  
+  exists-trace
+  "Ex ni sk pka pkb #t1 #t2 #t3 #t4. 
+  (HonestB(pkb) @t1
+  & HonestA(pka) @t2
+  & SessionA(ni,sk,pka,pkb)@t3 
+  & SessionB(ni,sk,pka,pkb)@t4)"
+
+
+//The secrecy property requires that both the participant are
+//honest and, at some point in time, the attacker knows the 
+//symmetric key that is established for the session
+lemma secret :
+"not( Ex ni sk pk1 pk2 #t1 #t2 #t3 #t4. 
+  (SessionA(ni,sk,pk1,pk2) @ t4 
+	& KU(sk) @ t3
+	& HonestA(pk1) @ t2
+	& HonestB(pk2) @ t1 ))"
+	
+	
+lemma integrity1:
+"(All pka m #t2 #t3.
+ KEYSYM_ENC_IN(pka,m) @ t2
+ & HonestA(pka) @ t3
+ ==>
+ (Ex #t1 .  KEYSYM_ENC_OUT(pka,m)  @ t1 
+ & t1<t2)
+ )"
+ 
+ 
+ 
+lemma integrity_Equality:
+"not(Ex pkb m1 m2 #t1 #t2 #t3.
+ NONCE_IN(pkb,m1) @ t2
+ & HonestB(pkb) @ t3
+ & NONCE_OUT(pkb,m2)  @ t1 
+ & t1<t2
+ & not(m1=m2)
+ )"
+ 
+/*lemma integrity3:
+"(All ni sk pka pkb  m #t2 #t3 #t4 #t5 #t8.
+ CERT_NONCESIGN_IN(pka,m) @ t2
+ & HonestA(pka) @ t3
+   & HonestB(pkb) @ t4
+   & SessionB(ni,sk,pka,pkb) @ t5
+   & SessionA(ni,sk,pka,pkb) @ t8
+ ==>
+ (Ex   #t1 #t6 #t7.  CERT_NONCESIGN_OUT(pka,m)  @ t1 & t1<t2 
+ & AuthenticA(pka) @ t6
+ & AuthenticB(pkb) @ t7
+ )
+ )"
+ */
+lemma integrity_Honest:
+"(All  pka m #t2 #t3 .
+ CERT_NONCESIGN_IN(pka,m) @ t2
+ & HonestA(pka) @ t3
+ ==>
+ (Ex   #t1 .  CERT_NONCESIGN_OUT(pka,m)  @ t1 & t1<t2 
+ 
+ )
+ )" 
+	
+lemma authenticity_weak_agreement:
+"All ni sk1 pk1 pk2 #t1 #t2 #t4. 
+  (SessionB(ni,sk1,pk1,pk2) @ t4 
+	& HonestA(pk1) @ t2
+	& HonestB(pk2) @ t1) ==>
+	 not(Ex #t3. KU(ni) @ t3)
+"
+
+	
+	
+	
+end
