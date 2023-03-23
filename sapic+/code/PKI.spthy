@@ -1,0 +1,65 @@
+theory PKI
+begin
+
+
+builtins: symmetric-encryption, asymmetric-encryption
+
+functions: macKey/0 [private],first/1,fakemacKey/0
+equations:first(<x,y>)=x
+
+let P()= 
+ new skA;
+  event HonestA(pk(skA));
+  out(<pk(skA),senc(<pk(skA),skA>,macKey)>);
+  	in(mess_pkB);
+	event ReceivedB(mess_pkB);
+	let <pkB,macpkB>=mess_pkB in
+		let realpkB=first(sdec(macpkB,macKey)) in
+			event AuthenticB(realpkB,pkB);
+			if(pkB=realpkB) then (
+				event EndP(realpkB))
+		
+
+let Q()= 		
+	in(mess_pkA);
+	event ReceivedA(mess_pkA);
+	let <pkA,macpkA>=mess_pkA in
+		let realpkA=first(sdec(macpkA,macKey)) in
+			event AuthenticA(realpkA,pkA);
+			if(pkA=realpkA) then (
+			     new skB; 
+				 event HonestB(pk(skB));
+				 out(<pk(skB),senc(<pk(skB),skB>,macKey)>))
+				  
+let R()=
+	in(<pk,senc(<~macpk,~macsk>,macKey)>);
+	let <realpk,realsk>=sdec(senc(<~macpk,~macsk>,macKey),macKey) in
+			if(pk=realpk) then (
+				event Reveal(realpk,realsk);
+				out(<pk,realsk>)
+				
+				)				  
+				  
+process:
+(
+(!Q)
+||
+(!R)
+||
+(!P)
+)
+
+lemma Received:
+exists-trace
+ "Ex pka ska #t1 #t2 #t3. 
+ HonestA(pka)@t1
+ & ReceivedA(<pka,senc(<pka,ska>,macKey)>)@t2
+ " 
+ 
+lemma Authentic:
+exists-trace
+ "Ex  pka  #t1 #t2. 
+ HonestA(pka)@t1
+ & AuthenticA(pka,pka)@t2
+ " 
+end
