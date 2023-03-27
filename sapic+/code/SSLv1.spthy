@@ -12,19 +12,19 @@ begin
 
 builtins:  signing, symmetric-encryption, asymmetric-encryption
 
-functions: macKey/0 [private],first/1,fakemacKey/0
-equations:first(<x,y>)=x
+functions: macKey/0 [private],first/1,second/1,fakemacKey/0
+equations:first(<x,y,z>)=x, second(<x,y,z>)=y
 
 let P()=        
-  new skA;
+ new skA;
   event HonestA(pk(skA));
-  out(<pk(skA),senc(<pk(skA),skA>,macKey)>);
-  	in(mess_pkB);
-	event ReceivedB(mess_pkB);
-	let <pkB,macpkB>=mess_pkB in
+  out(<pk(skA),senc(<pk(skA),'A',skA>,macKey)>);
+  	in(<pkB,macpkB>);
+	//event ReceivedB(mess_pkB);
+	//let <pkB,macpkB>=mess_pkB in
+	if 'B'=second(sdec(macpkB,macKey)) then(
 		let realpkB=first(sdec(macpkB,macKey)) in
-			event AuthenticB(realpkB,pkB);
-			if(pkB=realpkB) then (
+		if(pkB=realpkB) then (
 			    new skAB;
 			    event KEYSYM_ENC_OUT(pk(skA),aenc(skAB,pkB));
 			    out(aenc( skAB ,pkB));
@@ -36,19 +36,21 @@ let P()=
 						let messcert=senc(<pk(skA),sig>,skAB)in
 			          event CERT_NONCESIGN_OUT(pk(skA),messcert);
 			            out(messcert);
-			            event SessionA(xNb,skAB,pk(skA),pkB))
+			            event SessionA(xNb,skAB,pk(skA),pkB)
+		))
 			
 
 let Q() =
-	in(mess_pkA);
-	event ReceivedA(mess_pkA);
-	let <pkA,macpkA>=mess_pkA in
+		in(<pkA,macpkA>);
+	//event ReceivedA(mess_pkA);
+	//let <pkA,macpkA>=mess_pkA in
+	if 'A'=second(sdec(macpkA,macKey)) then(
 		let realpkA=first(sdec(macpkA,macKey)) in
 			event AuthenticA(realpkA,pkA);
 			if(pkA=realpkA) then (
 			     new skB; 
-			      event HonestB(pk(skB));
-			      out(<pk(skB),senc(<pk(skB),skB>,macKey)>);
+				 event HonestB(pk(skB));
+				 out(<pk(skB),senc(<pk(skB),'B',skB>,macKey)>);
 			      in(cypher1);
 				    let mess1 = adec(cypher1,skB) in
 			        let xskAB = mess1 in
@@ -62,11 +64,11 @@ let Q() =
 					          if verify(xsig,Nb,pkA)=true then (
 							  	event CERT_NONCESIGN_IN(pkA,cypher2);
 					            event SessionB(Nb,xskAB,pkA,pk(skB))
-					          ))
+					          )))
             
 let R()=
-	in(<pk,senc(<macpk,macsk>,macKey)>);
-	let <realpk,realsk>=sdec(senc(<macpk,macsk>,macKey),macKey) in
+	in(<pk,senc(<macpk,macrole,~macsk>,macKey)>);
+	let <realpk,role,realsk>=sdec(senc(<macpk,macrole,~macsk>,macKey),macKey) in
 			if(pk=realpk) then (
 				event Reveal(realpk,realsk);
 				out(<pk,realsk>)
@@ -78,12 +80,13 @@ let R()=
 
 
 process:
-(! (P)
+((!P)
 ||
-! (R)
+(!Q)
 ||
-! (Q)
-)
+(!R)
+) 
+
 
 //the sanity check evaluates only the existence
 //of a path, but there is no guarantee that the one found is correct.
@@ -96,11 +99,13 @@ REMARK
 
 lemma sanity1:  
   exists-trace
-  "Ex ni sk pka pkb #t1 #t2 #t3 #t4. 
-  (HonestB(pkb) @t1
-  & HonestA(pka) @t2
-  & SessionA(ni,sk,pka,pkb)@t3 
-  & SessionB(ni,sk,pka,pkb)@t4)"
+  "Ex ni sk ska skb #t1 #t2 #t3 #t4 . 
+  HonestB(pk(skb)) @t1
+  & HonestA(pk(ska)) @t2
+  & SessionA(ni,sk,pk(ska),pk(skb))@t3 
+  & SessionB(ni,sk,pk(ska),pk(skb))@t4
+  & not( Ex #j. Reveal(pk(ska),ska)@j) & (Ex #k. Reveal(pk(skb),skb)@k)"
+  
 
 
 //The secrecy property requires that both the participant are
